@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
-import { Search, Globe2, Loader2, ExternalLink, TrendingUp, Briefcase, FlaskConical, Heart, Cpu, Trophy, Film, Newspaper } from 'lucide-react';
+import { Search, Globe2, Loader2, ExternalLink, TrendingUp, Briefcase, FlaskConical, Heart, Cpu, Trophy, Film, Newspaper, ChevronDown, ChevronUp, CheckCircle2, AlertTriangle, HelpCircle } from 'lucide-react';
 import ExploreGlobe from '@/components/ExploreGlobe';
 import SignalScoreBadge from '@/components/SignalScoreBadge';
 import BiasMeter from '@/components/BiasMeter';
 import { searchNews, GradedArticle, NewsSearchResponse } from '@/lib/newsSearch';
+import { gradeClaims, GradedClaim } from '@/lib/gradeClaims';
 
 // Group articles that appear to cover the same story based on title token overlap.
 // Returns a list of "story clusters" — each cluster is one lead article plus any
@@ -307,6 +308,44 @@ function ResultRow({ cluster }: { cluster: StoryCluster }) {
   const date = new Date(article.published_at);
   const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
+  const [claimsOpen, setClaimsOpen] = useState(false);
+  const [claims, setClaims] = useState<GradedClaim[] | null>(null);
+  const [claimsLoading, setClaimsLoading] = useState(false);
+  const [claimsError, setClaimsError] = useState<string | null>(null);
+
+  async function toggleClaims(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const willOpen = !claimsOpen;
+    setClaimsOpen(willOpen);
+    if (willOpen && !claims && !claimsLoading) {
+      setClaimsLoading(true);
+      setClaimsError(null);
+      try {
+        const others = cluster.sources.slice(1).map((s) => ({
+          source_name: s.source_name,
+          title: s.title,
+          description: s.description || '',
+        }));
+        const result = await gradeClaims({
+          lead: {
+            url: article.url,
+            source_name: article.source_name,
+            title: article.title,
+            description: article.description || '',
+          },
+          others,
+        });
+        if (!result.success) throw new Error(result.error || 'grading failed');
+        setClaims(result.claims);
+      } catch (err) {
+        setClaimsError(err instanceof Error ? err.message : 'grading failed');
+      } finally {
+        setClaimsLoading(false);
+      }
+    }
+  }
+
   return (
     <li className="p-4 hover:bg-[#151929] transition-colors">
       <a href={article.url} target="_blank" rel="noopener noreferrer" className="block group">
@@ -347,6 +386,74 @@ function ResultRow({ cluster }: { cluster: StoryCluster }) {
                 <span className="text-gray-400">
                   {cluster.sources.slice(1).map((s) => s.source_name).join(', ')}
                 </span>
+              </div>
+            )}
+
+            {/* Claims toggle */}
+            <button
+              type="button"
+              onClick={toggleClaims}
+              className="mt-3 flex items-center gap-1 text-[11px] font-medium text-blue-300 hover:text-blue-200 transition-colors"
+            >
+              {claimsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              {claimsOpen ? 'Hide' : 'Check'} claims
+            </button>
+
+            {claimsOpen && (
+              <div className="mt-2 rounded-lg border border-[#1e2540] bg-[#0c0f1a] p-3">
+                {claimsLoading && (
+                  <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                    <Loader2 size={12} className="animate-spin text-blue-400" />
+                    Extracting and cross-checking claims...
+                  </div>
+                )}
+                {claimsError && (
+                  <div className="text-[11px] text-rose-400">
+                    Couldn&apos;t grade claims: {claimsError}
+                  </div>
+                )}
+                {claims && claims.length === 0 && (
+                  <div className="text-[11px] text-gray-500">
+                    No specific factual claims found in this snippet.
+                  </div>
+                )}
+                {claims && claims.length > 0 && (
+                  <ul className="space-y-2">
+                    {claims.map((c, idx) => {
+                      const isOpinion = c.claim_type === 'opinion';
+                      const confirmed = c.confirmation_count >= 3;
+                      const single = c.confirmation_count === 1;
+                      const Icon = isOpinion
+                        ? HelpCircle
+                        : confirmed
+                        ? CheckCircle2
+                        : single
+                        ? AlertTriangle
+                        : CheckCircle2;
+                      const color = isOpinion
+                        ? 'text-amber-400'
+                        : confirmed
+                        ? 'text-emerald-400'
+                        : single
+                        ? 'text-amber-400'
+                        : 'text-blue-300';
+                      const label = isOpinion
+                        ? 'Opinion'
+                        : `${c.confirmation_count} of ${c.total_cluster_sources} sources`;
+                      return (
+                        <li key={idx} className="flex gap-2">
+                          <Icon size={13} className={`${color} flex-shrink-0 mt-0.5`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[11px] text-gray-200 leading-snug">
+                              {c.claim_text}
+                            </p>
+                            <p className={`text-[10px] mt-0.5 ${color}`}>{label}</p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </div>
             )}
           </div>
