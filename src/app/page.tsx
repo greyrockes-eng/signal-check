@@ -4,7 +4,64 @@ import { useEffect, useState, FormEvent } from 'react';
 import { Search, Globe2, Loader2, ExternalLink, TrendingUp, Briefcase, FlaskConical, Heart, Cpu, Trophy, Film, Newspaper } from 'lucide-react';
 import ExploreGlobe from '@/components/ExploreGlobe';
 import SignalScoreBadge from '@/components/SignalScoreBadge';
+import BiasMeter from '@/components/BiasMeter';
 import { searchNews, GradedArticle, NewsSearchResponse } from '@/lib/newsSearch';
+
+// Group articles that appear to cover the same story based on title token overlap.
+// Returns a list of "story clusters" — each cluster is one lead article plus any
+// other articles from different sources that share ≥50% of meaningful title words.
+interface StoryCluster {
+  lead: GradedArticle;
+  sources: GradedArticle[]; // includes lead
+}
+
+const STOPWORDS = new Set([
+  'the','a','an','and','or','but','of','in','on','at','to','for','with','by',
+  'from','as','is','are','was','were','be','been','being','have','has','had',
+  'do','does','did','will','would','could','should','may','might','must','can',
+  'this','that','these','those','it','its','he','she','they','them','his','her',
+  'their','our','we','you','your','i','my','me','not','no','so','if','than',
+  'then','up','down','out','over','under','about','after','before','into','new',
+  'says','say','said','will','us','vs',
+]);
+
+function titleTokens(title: string): Set<string> {
+  return new Set(
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOPWORDS.has(w))
+  );
+}
+
+function clusterArticles(articles: GradedArticle[]): StoryCluster[] {
+  const clusters: StoryCluster[] = [];
+  const used = new Set<number>();
+
+  for (let i = 0; i < articles.length; i++) {
+    if (used.has(i)) continue;
+    const leadTokens = titleTokens(articles[i].title);
+    const cluster: StoryCluster = { lead: articles[i], sources: [articles[i]] };
+    used.add(i);
+
+    for (let j = i + 1; j < articles.length; j++) {
+      if (used.has(j)) continue;
+      if (articles[j].source_name === articles[i].source_name) continue;
+      const otherTokens = titleTokens(articles[j].title);
+      if (leadTokens.size === 0 || otherTokens.size === 0) continue;
+      let overlap = 0;
+      for (const t of otherTokens) if (leadTokens.has(t)) overlap++;
+      const smaller = Math.min(leadTokens.size, otherTokens.size);
+      if (overlap / smaller >= 0.5 && overlap >= 2) {
+        cluster.sources.push(articles[j]);
+        used.add(j);
+      }
+    }
+    clusters.push(cluster);
+  }
+  return clusters;
+}
 
 type Category = {
   id: string;
@@ -228,8 +285,8 @@ export default function HomePage() {
 
             {results && results.articles.length > 0 && (
               <ul className="divide-y divide-[#1e2540]">
-                {results.articles.map((a, i) => (
-                  <ResultRow key={`${a.url}-${i}`} article={a} />
+                {clusterArticles(results.articles).map((c, i) => (
+                  <ResultRow key={`${c.lead.url}-${i}`} cluster={c} />
                 ))}
               </ul>
             )}
@@ -240,7 +297,13 @@ export default function HomePage() {
   );
 }
 
-function ResultRow({ article }: { article: GradedArticle }) {
+function ResultRow({ cluster }: { cluster: StoryCluster }) {
+  const article = cluster.lead;
+  const sourceCount = cluster.sources.length;
+  // Average bias across all sources covering this story — gives a fairer picture
+  // of where the overall narrative sits on the left-center-right scale.
+  const avgBias =
+    cluster.sources.reduce((s, a) => s + a.bias_rating, 0) / sourceCount;
   const date = new Date(article.published_at);
   const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
@@ -258,8 +321,11 @@ function ResultRow({ article }: { article: GradedArticle }) {
             />
           )}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1.5">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <SignalScoreBadge score={article.signal_score} />
+              <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                {sourceCount} {sourceCount === 1 ? 'source' : 'sources'}
+              </span>
               <span className="text-[11px] text-gray-500 truncate">{article.source_name}</span>
               <span className="text-[11px] text-gray-600">·</span>
               <span className="text-[11px] text-gray-500">{dateStr}</span>
@@ -270,6 +336,18 @@ function ResultRow({ article }: { article: GradedArticle }) {
             </h3>
             {article.description && (
               <p className="text-xs text-gray-400 mt-1 line-clamp-2">{article.description}</p>
+            )}
+            {/* Left-Center-Right bias scale */}
+            <div className="mt-2.5 max-w-[240px]">
+              <BiasMeter bias={avgBias} />
+            </div>
+            {sourceCount > 1 && (
+              <div className="mt-2 text-[10px] text-gray-500">
+                Also covered by:{' '}
+                <span className="text-gray-400">
+                  {cluster.sources.slice(1).map((s) => s.source_name).join(', ')}
+                </span>
+              </div>
             )}
           </div>
         </div>
