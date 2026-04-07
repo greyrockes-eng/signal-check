@@ -17,8 +17,13 @@ export interface GradedArticle {
 
 export interface NewsSearchResponse {
   success: boolean;
-  mode: 'topic' | 'country-headlines' | 'country-search';
-  query: { topic: string | null; country: string | null; countryName: string | null };
+  mode: 'topic' | 'country-headlines' | 'country-search' | 'category-headlines' | 'top-headlines';
+  query: {
+    topic: string | null;
+    country: string | null;
+    countryName: string | null;
+    category: string | null;
+  };
   count: number;
   avg_signal_score: number;
   avg_bias: number;
@@ -29,6 +34,7 @@ export async function searchNews(params: {
   topic?: string;
   country?: string;
   countryName?: string;
+  category?: string;
 }): Promise<NewsSearchResponse> {
   const res = await fetch(FUNCTION_URL, {
     method: 'POST',

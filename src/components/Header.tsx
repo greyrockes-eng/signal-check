@@ -1,6 +1,6 @@
 'use client';
 
-import { Shield, Search, Bell, Globe2 } from 'lucide-react';
+import { Shield, Bell } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Header() {
@@ -25,21 +25,6 @@ export default function Header() {
 
           {/* Search & Actions */}
           <div className="flex items-center gap-3">
-            <Link
-              href="/explore"
-              className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-gray-300 hover:text-white bg-[#151929] hover:bg-[#1e2540] border border-[#1e2540] rounded-lg px-3 py-2 transition-colors"
-            >
-              <Globe2 size={14} className="text-blue-400" />
-              Explore
-            </Link>
-            <div className="hidden sm:flex items-center gap-2 bg-[#151929] border border-[#1e2540] rounded-lg px-3 py-2 w-64">
-              <Search size={14} className="text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search stories..."
-                className="bg-transparent text-sm text-gray-300 outline-none w-full placeholder:text-gray-500"
-              />
-            </div>
             <button className="relative p-2 rounded-lg hover:bg-[#151929] transition-colors">
               <Bell size={18} className="text-gray-400" />
               <span className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full pulse-dot" />
